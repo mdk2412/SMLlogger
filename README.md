@@ -1,6 +1,5 @@
 # SMLlogger - Smart Message Language (SML)
-## read SML-data (OBIS) from Zweirichtungszähler eHZ-IW8E2Axxx
-
+## read SML-data (OBIS) from Zweirichtungszähler ISKRA MT681
 
 based on 
 - http://wiki.volkszaehler.org/hardware/channels/meters/power/edl-ehz/edl21-ehz
