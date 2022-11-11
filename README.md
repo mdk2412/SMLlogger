@@ -22,12 +22,3 @@ Data is read via USB using a [http://wiki.volkszaehler.org/hardware/controllers/
 For details, please see: [volkszaehler.org](http://wiki.volkszaehler.org/hardware/channels/meters/power/edl-ehz/emh-ehz-h1)
 
 Length of stream in my case is 456 characters (ISKRA MT681).
-         630201
-         71 
-           01
-       635271
-     00
-     00
-     1b1b1b1b
-     1a01684c 
-
