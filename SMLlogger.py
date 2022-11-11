@@ -144,9 +144,9 @@ def main():
                 ("iskra_mt681/einspeisung", sml280/10000.0000)]
             publish.multiple(msgs, hostname=broker, port=1883)
             try:
-                rrdtool.update(bezug_rrd, 'N:%s:%s:%s:%s:%s' % ((sml180/10000.0000),(max(0, sml167)),(max(0, sml367)),(max(0, sml567)),(max(0, sml767))$
-                rrdtool.update(einspeisung_rrd, 'N:%s:%s:%s:%s:%s' % ((sml280/10000.0000),(min(0, sml167)),(min(0, sml367)),(min(0, sml567)),(min(0, sm$
-            except rrdtool.OperationalError, e:
+                rrdtool.update(bezug_rrd, 'N:%s:%s:%s:%s:%s' % ((sml180/10000.0000),(max(0, sml167)),(max(0, sml367)),(max(0, sml567)),(max(0, sml767))))
+                rrdtool.update(einspeisung_rrd, 'N:%s:%s:%s:%s:%s' % ((sml280/10000.0000),(min(0, sml167)),(min(0, sml367)),(min(0, sml567)),(min(0, sml767))))
+	    except rrdtool.OperationalError, e:
                 logging.debug("RRDtool error:" % (e,))
 
 if __name__ == "__main__":
