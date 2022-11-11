@@ -41,7 +41,7 @@ import logging
 serialport='/dev/ttyAMA0'
 broker='10.9.11.60'
 bezug_rrd = "%s/strom-iskra.rrd" % (os.path.dirname(os.path.abspath(__file__)))
-einspeisung_rrd= "%s/strom-iskra-einspeisung.rrd" % (os.path.dirname(os.path.abspath(__file__)))
+einspeisung_rrd= "%s/einspeisung-iskra.rrd" % (os.path.dirname(os.path.abspath(__file__)))
 
 # hex string to signed integer, inkl. range check http://stackoverflow.com/a/6727975 
 def hexstr2signedint(hexval):
