@@ -112,7 +112,7 @@ def main():
 	
 			# find start escape sequence: 1b1b1b1b01010101
 				if data_raw.encode("hex").find("1b1b1b1b01010101") >= 0 :
-					data_raw += ser.read(406) #Gesamtlänge 456 Zeichen, letzte 3 Zeichen CRC
+					data_raw += ser.read(416) #Gesamtlänge 456 Zeichen, letzte 3 Zeichen CRC
 					reading_ok = True 
 					break # found enough data, stop reading serial port
 		except serial.serialutil.SerialException, e:
