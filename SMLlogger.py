@@ -1,29 +1,25 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-########################################################################
+# read out ISKRA MT681 SML messages from serial port and publish via MQTT
+# 
+# uses code from:
 #
-#   SMLlogger:  
-#		7.2.2016 Dirk Clemens 	iot@adcore.de
-#		6.5.2017 Dirk Clemens	improvements, range check while converting hex to int
-#		read data using a IR-USB-Head from a SML-counter (OBIS)
-#		tested with "Zweirichtungszähler ISKRA MT681"
-#	
-#	based on 
-#		http://wiki.volkszaehler.org/hardware/channels/meters/power/edl-ehz/edl21-ehz
-#		http://wiki.volkszaehler.org/hardware/channels/meters/power/edl-ehz/emh-ehz-h1
-#		http://volkszaehler.org/pipermail/volkszaehler-users/2012-September/000451.html
-#		http://wiki.volkszaehler.org/software/sml
-#		https://sharepoint.infra-fuerth.de/unbundling/obis_kennzahlen.pdf
-#		https://www.mikrocontroller.net/attachment/89888/Q3Dx_D0_Spezifikation_v11.pdf
-#		https://eclipse.org/paho/clients/python/ 
+# https://github.com/dirkclemens/SMLlogger
+# https://www.stefan-weigert.de/php_loader/sml.php
 #
-#	requirements:
-#	sudo apt-get install python-dev python-pip python-serial python3-serial 
-#	sudo pip install RPi.GPIO
-#	sudo pip install paho-mqtt
+# version of November 13, 2022
 #
-########################################################################
+# requires (based on Raspberry Pi OS Lite (Legacy)
+#
+# Release date: September 22nd 2022
+# System: 32-bit
+# Kernel version: 5.10
+# Debian version: 10 (buster)):
+#
+# sudo apt install python-serial python-pip librrd-dev libpython-dev
+# sudo pip install paho-mqtt
+# sudo pip install rrdtool
 
 import sys
 import os
@@ -34,14 +30,14 @@ import paho.mqtt.publish as publish
 import rrdtool
 import logging
 
-# ------------- #
-# settings      #
-# ------------- #
+# Einstellungen
 
 serialport='/dev/ttyAMA0'
 broker='10.9.11.60'
-bezug_rrd = "%s/strom-iskra.rrd" % (os.path.dirname(os.path.abspath(__file__)))
+strom_rrd = "%s/strom-iskra.rrd" % (os.path.dirname(os.path.abspath(__file__)))
 einspeisung_rrd= "%s/einspeisung-iskra.rrd" % (os.path.dirname(os.path.abspath(__file__)))
+
+# Funktionen
 
 crc16_x25_table = [
 	0x0000, 0x1189, 0x2312, 0x329B, 0x4624, 0x57AD,	0x6536, 0x74BF,
@@ -85,120 +81,93 @@ def crc16_x25(Buffer):
 	crcsum ^= 0xffff
 	return crcsum
 
-# hex string to signed integer, inkl. range check http://stackoverflow.com/a/6727975 
 def hexstr2signedint(hexval):
 	uintval = int(hexval,16)
-	if uintval > 0x7FFFFFFF:		# > 2147483647
-		uintval -= 0x100000000		# -= 4294967296 
+	if uintval > 0x7FFFFFFF:
+		uintval -= 0x100000000
 	return uintval
 
-# parse hex string from USB serial stream and extract values for obis_id
-# print result and publish as mqtt message 
 def parseSML(data_hex, obis_id, obis_string, pos, length):
 	obis_value = 0
-	# find position of OBIS-Kennzahl 
 	position = data_hex.find(obis_string)
-	
-	# break, do not send mqtt message
 	if position <= 0:
-		return 0 
-
-	# extract reading from position start: 34 length: 10 (for 1.8.0.)
+		return 0
 	hex_value = data_hex[position+pos:position+pos+length]
-	
-	# convert to integer, check range  
 	obis_value = hexstr2signedint(hex_value)
 	return obis_value
 
-########################################################################
-# MAIN  	
-########################################################################
+# Main
+
 def main():
 
-	# logging
 	global logging
-	logging.basicConfig(filename='/var/log/SMLlogger.log', 
-					level=logging.DEBUG, 
-					format='%(asctime)s %(message)s', 
-					datefmt='%Y-%m-%d %H:%M:%S')
+	logging.basicConfig(filename='/var/log/SMLlogger.log',
+	level = logging.DEBUG,
+	format = '%(asctime)s %(message)s',
+	datefmt = '%Y-%m-%d %H:%M:%S')
 
-	#logger = logging.getLogger(__name__)
-	#logger.setLevel(logging.DEBUG)
-
-	# eHZ-Datentelegramme können mittels eines optischen Auslesekopfs nach DIN EN 62056-21 
-	# z. B. über die serielle Schnittstelle eines PC ausgelesen werden.
-	# Einstellung: bit/s= 9600, Datenbit = 7, Parität = gerade, Stoppbits = 1, Flusssteuerung = kein.
 	ser = serial.Serial(
-		port=serialport, 
-		baudrate=9600, 
-		parity=serial.PARITY_NONE,
-		stopbits=serial.STOPBITS_ONE,
-		bytesize=serial.EIGHTBITS,
-		timeout=1, 
-		xonxoff=False, 
-		rtscts=False, 
-		dsrdtr=False)
+		port = serialport,
+		baudrate = 9600,
+		parity = serial.PARITY_NONE,
+		stopbits = serial.STOPBITS_ONE,
+		bytesize = serial.EIGHTBITS,
+		timeout = 1,
+		xonxoff = False,
+		rtscts = False,
+		dsrdtr = False)
 	ser.flushInput()
 	ser.flushOutput()
 
-
 	data_hex = ''
 	reading_ok = False
-	
-	while True:
+
+	while (1):
 		try:
-			# read n chars, change that in case it's too short
-			while True:
-				data_raw = ser.read(8) # Startsequenz 8 Zeichen lang
-				#print(data_raw.encode("hex"))
-	
-			# find start escape sequence: 1b1b1b1b01010101
-				if data_raw.encode("hex").find("1b1b1b1b01010101") >= 0 :
-					data_raw += ser.read(448) #Gesamtlänge 456 Zeichen, letzte 2 Zeichen CRC
-					reading_ok = True 
-					break # found enough data, stop reading serial port
-		except serial.serialutil.SerialException, e:
+			while (1):
+				data_raw = ser.read(8) # Startsequenz SML 1b1b1b1b01010101
+#				if data_raw.encode('hex').find("1b1b1b1b01010101") >= 0 :
+				if data_raw == '\x1b\x1b\x1b\x1b\x01\x01\x01\x01' >= 0 :
+					data_raw += ser.read(448) # Nachrichtenlänge 456 Zeichen
+					reading_ok = True
+					break
+		except serial.serialutil.SerialException as e:
 			reading_ok = False
-			logging.debug("Error reading serial port: %s" % (e,))
-			print("Error reading serial port: ", e)
+			logging.debug("Fehler serielle Schnittstelle: %s" % (e,))
 
-		# convert reading to hex:
-		data_hex = data_raw.encode("hex")
-		# print (data_hex)
+		data_hex = data_raw.encode('hex')
 
-	if reading_ok:
-	    message = data_raw[0:-2]						#letzen beiden Bytes wegschneiden
-            crc_rx = int((data_raw[-1] + data_raw[-2]).encode('hex'), 16)	#CRC Bytes getauscht in eine Variable speichern
-            crc_calc = crc16_x25(message)					#eigene Prüfsumme bilden
+		if reading_ok:
+			message = data_raw[0:-2] # Nachricht ohne CRC-Prüfsumme
+			crc_rx = int((data_raw[-1] + data_raw[-2]).encode('hex'), 16) # Letzte 2 Zeichen sind CRC-Prüfsumme in umgekehrter Reihenfolge
+			crc_calc = crc16_x25(message)
 
-	    if crc_rx == crc_calc:							#Prüfsummen vergleichen
-		# tested with ISKRA MT681
-            	sml180 = parseSML(data_hex, "180", '070100010800ff', 42, 10) # Wirkenergie in Wh (total)
-#            sml181 = parseSML(data_hex, "181", '070100010801ff', 34, 10) # Wirkenergie Tarif 1 in Wh (total)
-#            sml182 = parseSML(data_hex, "182", '070100010802ff', 34, 10) # Wirkenergie Tarif 2 in Wh (total)
-            	sml167 = parseSML(data_hex, "167", '070100100700ff', 28, 8)  # Wirkleistung in W
-            	sml367 = parseSML(data_hex, "367", '070100240700ff', 28, 8)  # Wirkleistung L1 in W
-            	sml567 = parseSML(data_hex, "567", '070100380700ff', 28, 8)  # Wirkleistung L2 in W
-            	sml767 = parseSML(data_hex, "767", '0701004c0700ff', 28, 8)  # Wirkleistung L3 in W
-            	sml280 = parseSML(data_hex, "280", '070100020800ff', 34, 10)  # Wirkenergie in Wh (Einspeisung)
-#            sml281 = parseSML(data_hex, "281", '070100020801ff', 34, 10)  # Wirkenergie Tarif 1 in Wh (Einspeisung)
-#            sml282 = parseSML(data_hex, "282", '070100020802ff', 34, 10)  # Wirkenergie Tarif 2 in Wh (Einspeisung)
-            	msgs = [{'topic':"iskra_mt681/bezug", 'payload':(sml180/10000.0000)},
-                	("iskra_mt681/leistung-L", float(sml167)),
-                        ("iskra_mt681/leistung-L1", float(sml367)),
-                        ("iskra_mt681/leistung-L2", float(sml567)),
-                        ("iskra_mt681/leistung-L3", float(sml767)),
-                        ("iskra_mt681/einspeisung", sml280/10000.0000)]
-                publish.multiple(msgs, hostname=broker, port=1883)
-                try:
-                    rrdtool.update(bezug_rrd, 'N:%s:%s:%s:%s:%s' % ((sml180/10000.0000),(max(0, sml167)),(max(0, sml367)),(max(0, sml567)),(max(0, sml767))))
-                    rrdtool.update(einspeisung_rrd, 'N:%s:%s:%s:%s:%s' % ((sml280/10000.0000),(min(0, sml167)),(min(0, sml367)),(min(0, sml567)),(min(0, sml767))))
-	        except rrdtool.OperationalError, e:
-                    logging.debug("RRDtool error:" % (e,))
-	    else:
-                logging.debug("CRC error")
+			if crc_rx == crc_calc:
+				sml180 = parseSML(data_hex, "180", '070100010800ff', 42, 10) # Wirkenergie in Wh (total)
+#			sml181 = parseSML(data_hex, "181", '070100010801ff', 34, 10) # Wirkenergie Tarif 1 in Wh (total)
+#			sml182 = parseSML(data_hex, "182", '070100010802ff', 34, 10) # Wirkenergie Tarif 2 in Wh (total)
+				sml280 = parseSML(data_hex, "280", '070100020800ff', 34, 10)  # Wirkenergie in Wh (Einspeisung)
+#			sml281 = parseSML(data_hex, "281", '070100020801ff', 34, 10)  # Wirkenergie Tarif 1 in Wh (Einspeisung)
+#			sml282 = parseSML(data_hex, "282", '070100020802ff', 34, 10)  # Wirkenergie Tarif 2 in Wh (Einspeisung)
+				sml167 = parseSML(data_hex, "167", '070100100700ff', 28, 8)  # Wirkleistung in W
+				sml367 = parseSML(data_hex, "367", '070100240700ff', 28, 8)  # Wirkleistung L1 in W
+				sml567 = parseSML(data_hex, "567", '070100380700ff', 28, 8)  # Wirkleistung L2 in W
+				sml767 = parseSML(data_hex, "767", '0701004c0700ff', 28, 8)  # Wirkleistung L3 in W
+				msgs = [{'topic':"iskra_mt681/bezug", 'payload':(sml180/10000.0000)},
+					("iskra_mt681/leistung-L", float(sml167)),
+					("iskra_mt681/leistung-L1", float(sml367)),
+					("iskra_mt681/leistung-L2", float(sml567)),
+					("iskra_mt681/leistung-L3", float(sml767)),
+					("iskra_mt681/einspeisung", sml280/10000.0000)]
+				publish.multiple(msgs, hostname=broker, port=1883)
+				try:
+					rrdtool.update(strom_rrd, 'N:%s:%s:%s:%s:%s' % ((sml180/10000.0000),(max(0, sml167)),(max(0, sml367)),(max(0, sml567)),(max(0, sml767))))
+					rrdtool.update(einspeisung_rrd, 'N:%s:%s:%s:%s:%s' % ((sml280/10000.0000),(min(0, sml167)),(min(0, sml367)),(min(0, sml567)),(min(0, sml767))))
+				except rrdtool.OperationalError as e:
+					logging.debug("RRDtool-Fehler:" % (e,))
+			else:
+				logging.debug("CRC-Fehler")
 
 if __name__ == "__main__":
 
-    main()
-
+	main()
